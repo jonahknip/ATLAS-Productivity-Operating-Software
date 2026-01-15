@@ -1,0 +1,14 @@
+# Nixpacks configuration for Railway
+[phases.setup]
+nixPkgs = ["python311", "gcc"]
+
+[phases.install]
+cmds = [
+    "cd apps/api && pip install -e ."
+]
+
+[phases.build]
+cmds = []
+
+[start]
+cmd = "cd apps/api && uvicorn atlas.main:app --host 0.0.0.0 --port ${PORT:-8000}"
