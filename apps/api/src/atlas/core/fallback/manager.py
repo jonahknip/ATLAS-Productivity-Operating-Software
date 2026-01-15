@@ -65,27 +65,27 @@ class FallbackManager:
         self._chains: dict[tuple[RoutingProfile, JobClass], ModelChain] = {
             # Offline - local only
             (RoutingProfile.OFFLINE, JobClass.INTENT_ROUTING): ModelChain(
-                [("ollama", "llama3.2"), ("ollama", "mistral"), ("ollama", "phi3")]
+                [("ollama", "llama3.2:1b"), ("ollama", "llama3.2"), ("ollama", "mistral")]
             ),
             (RoutingProfile.OFFLINE, JobClass.PLANNING): ModelChain(
-                [("ollama", "llama3.2"), ("ollama", "mistral")]
+                [("ollama", "llama3.2:1b"), ("ollama", "llama3.2"), ("ollama", "mistral")]
             ),
             (RoutingProfile.OFFLINE, JobClass.EXTRACTION): ModelChain(
-                [("ollama", "llama3.2"), ("ollama", "mistral")]
+                [("ollama", "llama3.2:1b"), ("ollama", "llama3.2"), ("ollama", "mistral")]
             ),
             # Balanced - local first, cloud fallback
             (RoutingProfile.BALANCED, JobClass.INTENT_ROUTING): ModelChain(
-                [("ollama", "llama3.2"), ("openai", "gpt-4o-mini"), ("openai", "gpt-4o")]
+                [("ollama", "llama3.2:1b"), ("openai", "gpt-4o-mini"), ("openai", "gpt-4o")]
             ),
             (RoutingProfile.BALANCED, JobClass.PLANNING): ModelChain(
-                [("ollama", "llama3.2"), ("openai", "gpt-4o-mini"), ("openai", "gpt-4o")]
+                [("ollama", "llama3.2:1b"), ("openai", "gpt-4o-mini"), ("openai", "gpt-4o")]
             ),
             (RoutingProfile.BALANCED, JobClass.EXTRACTION): ModelChain(
-                [("ollama", "llama3.2"), ("openai", "gpt-4o-mini")]
+                [("ollama", "llama3.2:1b"), ("openai", "gpt-4o-mini")]
             ),
             # Accuracy - cloud first
             (RoutingProfile.ACCURACY, JobClass.INTENT_ROUTING): ModelChain(
-                [("openai", "gpt-4o"), ("openai", "gpt-4o-mini"), ("ollama", "llama3.2")]
+                [("openai", "gpt-4o"), ("openai", "gpt-4o-mini"), ("ollama", "llama3.2:1b")]
             ),
             (RoutingProfile.ACCURACY, JobClass.PLANNING): ModelChain(
                 [("openai", "gpt-4o"), ("openai", "gpt-4o-mini")]
@@ -110,7 +110,7 @@ class FallbackManager:
                         self._chains[key] = self._chains[default_key]
                     else:
                         # Ultimate fallback
-                        self._chains[key] = ModelChain([("ollama", "llama3.2")])
+                        self._chains[key] = ModelChain([("ollama", "llama3.2:1b")])
 
     def get_model_chain(
         self, profile: RoutingProfile, job_class: JobClass
@@ -119,14 +119,14 @@ class FallbackManager:
         chain = self._chains.get((profile, job_class))
         if chain:
             return chain.models[: self.max_models_per_request]
-        return [("ollama", "llama3.2")]
+        return [("ollama", "llama3.2:1b")]
 
     def get_first_model(
         self, profile: RoutingProfile, job_class: JobClass
     ) -> tuple[str, str]:
         """Get the first model to try."""
         chain = self.get_model_chain(profile, job_class)
-        return chain[0] if chain else ("ollama", "llama3.2")
+        return chain[0] if chain else ("ollama", "llama3.2:1b")
 
     def decide(
         self,
