@@ -409,6 +409,121 @@ async def configure_provider(name: str, config: ProviderConfigRequest) -> dict[s
 
 
 # =============================================================================
+# Tasks API Endpoints
+# =============================================================================
+
+
+class TaskCreateRequest(BaseModel):
+    """Request to create a task."""
+    title: str
+    description: str = ""
+    due_date: str | None = None
+    priority: str = "medium"
+    tags: list[str] = []
+
+
+class TaskUpdateRequest(BaseModel):
+    """Request to update a task."""
+    title: str | None = None
+    description: str | None = None
+    due_date: str | None = None
+    priority: str | None = None
+    status: str | None = None
+    tags: list[str] | None = None
+
+
+@app.get("/api/tasks")
+async def list_tasks() -> dict[str, Any]:
+    """List all tasks."""
+    task_list_tool = tool_registry.get("TASK_LIST")
+    if not task_list_tool:
+        return {"tasks": []}
+    
+    result = await task_list_tool.execute()
+    return {"tasks": result.data.get("tasks", [])}
+
+
+@app.post("/api/tasks")
+async def create_task(request: TaskCreateRequest) -> dict[str, Any]:
+    """Create a new task."""
+    task_create_tool = tool_registry.get("TASK_CREATE")
+    if not task_create_tool:
+        raise HTTPException(status_code=503, detail="Task tools not available")
+    
+    result = await task_create_tool.execute(
+        title=request.title,
+        description=request.description,
+        due_date=request.due_date,
+        priority=request.priority,
+        tags=request.tags,
+    )
+    
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.error)
+    
+    return result.data
+
+
+@app.get("/api/tasks/{task_id}")
+async def get_task(task_id: str) -> dict[str, Any]:
+    """Get a task by ID."""
+    task_get_tool = tool_registry.get("TASK_GET")
+    if not task_get_tool:
+        raise HTTPException(status_code=503, detail="Task tools not available")
+    
+    result = await task_get_tool.execute(task_id=task_id)
+    
+    if not result.success:
+        raise HTTPException(status_code=404, detail=result.error)
+    
+    return result.data.get("task", {})
+
+
+@app.patch("/api/tasks/{task_id}")
+async def update_task(task_id: str, request: TaskUpdateRequest) -> dict[str, Any]:
+    """Update a task."""
+    task_update_tool = tool_registry.get("TASK_UPDATE")
+    if not task_update_tool:
+        raise HTTPException(status_code=503, detail="Task tools not available")
+    
+    updates = {}
+    if request.title is not None:
+        updates["title"] = request.title
+    if request.description is not None:
+        updates["description"] = request.description
+    if request.due_date is not None:
+        updates["due_date"] = request.due_date
+    if request.priority is not None:
+        updates["priority"] = request.priority
+    if request.status is not None:
+        updates["status"] = request.status
+    if request.tags is not None:
+        updates["tags"] = request.tags
+    
+    result = await task_update_tool.execute(task_id=task_id, updates=updates)
+    
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.error)
+    
+    return result.data
+
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(task_id: str) -> dict[str, Any]:
+    """Delete a task."""
+    task_delete_tool = tool_registry.get("TASK_DELETE")
+    if not task_delete_tool:
+        raise HTTPException(status_code=503, detail="Task tools not available")
+    
+    result = await task_delete_tool.execute(task_id=task_id)
+    
+    if not result.success:
+        raise HTTPException(status_code=404, detail=result.error)
+    
+    return {"deleted": True, "task_id": task_id}
+
+
+# =============================================================================
 # Skills & Tools Endpoints
 # =============================================================================
 

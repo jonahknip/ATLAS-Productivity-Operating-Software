@@ -49,15 +49,28 @@ class Executor:
     """
 
     # Intent classification prompt template
-    INTENT_PROMPT = """Classify the following user input into one of these intent types:
-- CAPTURE_TASKS: User wants to create or capture tasks/todos
-- PLAN_DAY: User wants to plan their day or schedule
-- PROCESS_MEETING_NOTES: User has meeting notes to process
-- SEARCH_SUMMARIZE: User wants to search or summarize information
-- BUILD_WORKFLOW: User wants to create automation
-- UNKNOWN: Cannot classify or general query
+    INTENT_PROMPT = """Classify the following user input and extract relevant entities.
+
+Intent types:
+- CAPTURE_TASKS: User wants to create tasks/todos. Extract each task as a separate entity.
+- PLAN_DAY: User wants to plan their day or schedule.
+- PROCESS_MEETING_NOTES: User has meeting notes to process.
+- SEARCH_SUMMARIZE: User wants to search or summarize information.
+- BUILD_WORKFLOW: User wants to create automation.
+- UNKNOWN: Cannot classify or general query.
 
 User input: "{input}"
+
+Instructions:
+1. Identify the intent type
+2. Extract ALL tasks, items, or entities mentioned
+3. For CAPTURE_TASKS: each task should be a separate entry in raw_entities
+
+Example for "Create tasks: buy milk, call mom, finish report":
+{{"type": "CAPTURE_TASKS", "confidence": 0.95, "parameters": {{}}, "raw_entities": ["buy milk", "call mom", "finish report"]}}
+
+Example for "Create a task to review the quarterly report":
+{{"type": "CAPTURE_TASKS", "confidence": 0.95, "parameters": {{}}, "raw_entities": ["review the quarterly report"]}}
 
 Respond ONLY with valid JSON (no markdown, no explanation):
 {{"type": "<INTENT_TYPE>", "confidence": <0.0-1.0>, "parameters": {{}}, "raw_entities": ["entity1", "entity2"]}}"""

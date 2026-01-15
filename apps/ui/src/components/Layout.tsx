@@ -23,6 +23,9 @@ export default function Layout() {
           <NavLink to="/" className="nav-link" end>
             Chat
           </NavLink>
+          <NavLink to="/tasks" className="nav-link">
+            Tasks
+          </NavLink>
           <NavLink to="/dashboard" className="nav-link">
             Dashboard
           </NavLink>
