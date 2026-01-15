@@ -2,14 +2,19 @@
 ATLAS API - Main FastAPI application.
 
 Entry point for the ATLAS backend server.
+Serves both the API and the static UI files.
 """
 
 import logging
+import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from atlas import __version__
@@ -712,3 +717,35 @@ async def get_receipt_legacy(receipt_id: str) -> ReceiptResponse:
 async def undo_receipt_legacy(receipt_id: str) -> UndoResponse:
     """Legacy undo receipt endpoint."""
     return await undo_receipt_v1(receipt_id)
+
+
+# =============================================================================
+# Static UI Serving (for Railway deployment)
+# =============================================================================
+
+# Path to static UI files (built UI copied during Docker build)
+STATIC_DIR = Path(__file__).parent.parent.parent.parent / "static"
+
+# Check if static directory exists (production build)
+if STATIC_DIR.exists():
+    # Serve static assets (JS, CSS, images)
+    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+    
+    @app.get("/{full_path:path}")
+    async def serve_ui(request: Request, full_path: str):
+        """Serve the UI for any non-API route (SPA fallback)."""
+        # Don't intercept API routes
+        if full_path.startswith(("api/", "v1/", "health", "version")):
+            raise HTTPException(status_code=404, detail="Not found")
+        
+        # Try to serve the exact file first
+        file_path = STATIC_DIR / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(file_path)
+        
+        # Fall back to index.html for SPA routing
+        index_path = STATIC_DIR / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        
+        raise HTTPException(status_code=404, detail="UI not found")
