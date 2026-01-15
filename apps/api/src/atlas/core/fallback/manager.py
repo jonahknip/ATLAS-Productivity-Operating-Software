@@ -61,9 +61,9 @@ class FallbackManager:
         self.max_models_per_request = max_models_per_request
 
         # Model chains by profile and job class
-        # In production, this would be configurable
+        # Cloud-first for production, with Ollama fallback for local dev
         self._chains: dict[tuple[RoutingProfile, JobClass], ModelChain] = {
-            # Offline - local only
+            # Offline - local only (won't work in cloud)
             (RoutingProfile.OFFLINE, JobClass.INTENT_ROUTING): ModelChain(
                 [("ollama", "llama3.2:1b"), ("ollama", "llama3.2"), ("ollama", "mistral")]
             ),
@@ -73,17 +73,17 @@ class FallbackManager:
             (RoutingProfile.OFFLINE, JobClass.EXTRACTION): ModelChain(
                 [("ollama", "llama3.2:1b"), ("ollama", "llama3.2"), ("ollama", "mistral")]
             ),
-            # Balanced - local first, cloud fallback
+            # Balanced - cloud first, local fallback (works in cloud and local)
             (RoutingProfile.BALANCED, JobClass.INTENT_ROUTING): ModelChain(
-                [("ollama", "llama3.2:1b"), ("openai", "gpt-4o-mini"), ("openai", "gpt-4o")]
+                [("openai", "gpt-4o-mini"), ("openai", "gpt-4o"), ("ollama", "llama3.2:1b")]
             ),
             (RoutingProfile.BALANCED, JobClass.PLANNING): ModelChain(
-                [("ollama", "llama3.2:1b"), ("openai", "gpt-4o-mini"), ("openai", "gpt-4o")]
+                [("openai", "gpt-4o-mini"), ("openai", "gpt-4o"), ("ollama", "llama3.2:1b")]
             ),
             (RoutingProfile.BALANCED, JobClass.EXTRACTION): ModelChain(
-                [("ollama", "llama3.2:1b"), ("openai", "gpt-4o-mini")]
+                [("openai", "gpt-4o-mini"), ("ollama", "llama3.2:1b")]
             ),
-            # Accuracy - cloud first
+            # Accuracy - cloud first, best models
             (RoutingProfile.ACCURACY, JobClass.INTENT_ROUTING): ModelChain(
                 [("openai", "gpt-4o"), ("openai", "gpt-4o-mini"), ("ollama", "llama3.2:1b")]
             ),

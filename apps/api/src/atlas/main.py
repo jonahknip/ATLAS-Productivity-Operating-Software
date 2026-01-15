@@ -90,16 +90,28 @@ async def lifespan(app: FastAPI):
     receipts_store = ReceiptsStore(database)
 
     # Register providers
-    provider_registry.register(OllamaAdapter(base_url=settings.ollama_base_url))
+    # Only register Ollama if we can connect to it (local dev)
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.get(f"{settings.ollama_base_url}/api/tags")
+            if response.status_code == 200:
+                provider_registry.register(OllamaAdapter(base_url=settings.ollama_base_url))
+                logging.info("Ollama provider registered")
+    except Exception:
+        logging.info("Ollama not available, skipping registration")
 
     if settings.openai_api_key:
         provider_registry.register(OpenAIAdapter(api_key=settings.openai_api_key))
+        logging.info("OpenAI provider registered")
     
     if settings.anthropic_api_key:
         provider_registry.register(AnthropicAdapter(api_key=settings.anthropic_api_key))
+        logging.info("Anthropic provider registered")
     
     if settings.groq_api_key:
         provider_registry.register(GroqAdapter(api_key=settings.groq_api_key))
+        logging.info("Groq provider registered")
 
     # Register tools
     tool_registry.register(TaskCreateTool())
