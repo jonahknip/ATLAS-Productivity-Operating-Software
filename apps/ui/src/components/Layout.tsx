@@ -14,18 +14,23 @@ export default function Layout() {
     <div className="layout">
       <header className="header">
         <div className="header-left">
-          <h1 className="logo">ATLAS</h1>
+          <NavLink to="/" className="logo-link">
+            <h1 className="logo">ATLAS</h1>
+          </NavLink>
           <span className="version">v{status?.version ?? '...'}</span>
         </div>
         <nav className="nav">
           <NavLink to="/" className="nav-link" end>
+            Chat
+          </NavLink>
+          <NavLink to="/dashboard" className="nav-link">
             Dashboard
           </NavLink>
           <NavLink to="/receipts" className="nav-link">
-            Receipts
+            History
           </NavLink>
-          <NavLink to="/providers" className="nav-link">
-            Providers
+          <NavLink to="/settings" className="nav-link">
+            Settings
           </NavLink>
         </nav>
       </header>

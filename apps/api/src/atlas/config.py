@@ -31,10 +31,12 @@ class Settings(BaseSettings):
     api_token: str | None = None
 
     # CORS - comma-separated list of allowed origins
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origins: str = "http://localhost:5173,http://localhost:3000,http://localhost:5174"
 
     # Provider keys (BYOK)
     openai_api_key: str | None = None
+    anthropic_api_key: str | None = None
+    groq_api_key: str | None = None
     ollama_base_url: str = "http://localhost:11434"
 
     # Reliability engine caps (locked per spec)

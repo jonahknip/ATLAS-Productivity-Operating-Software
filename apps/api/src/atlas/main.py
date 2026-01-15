@@ -21,6 +21,8 @@ from atlas.middleware import APITokenMiddleware
 from atlas.providers import ProviderRegistry
 from atlas.providers.ollama import OllamaAdapter
 from atlas.providers.openai import OpenAIAdapter
+from atlas.providers.anthropic import AnthropicAdapter
+from atlas.providers.groq import GroqAdapter
 from atlas.storage import ReceiptsStore, get_database, close_database
 
 # Configure logging
@@ -91,6 +93,12 @@ async def lifespan(app: FastAPI):
 
     if settings.openai_api_key:
         provider_registry.register(OpenAIAdapter(api_key=settings.openai_api_key))
+    
+    if settings.anthropic_api_key:
+        provider_registry.register(AnthropicAdapter(api_key=settings.anthropic_api_key))
+    
+    if settings.groq_api_key:
+        provider_registry.register(GroqAdapter(api_key=settings.groq_api_key))
 
     # Register tools
     tool_registry.register(TaskCreateTool())
@@ -347,6 +355,55 @@ async def list_provider_models(name: str) -> dict[str, Any]:
         "provider": name,
         "models": models,
     }
+
+
+class ProviderConfigRequest(BaseModel):
+    """Request body for provider configuration."""
+    api_key: str | None = None
+    base_url: str | None = None
+
+
+@app.post("/api/providers/{name}/configure")
+async def configure_provider(name: str, config: ProviderConfigRequest) -> dict[str, Any]:
+    """
+    Configure a provider with API key or URL.
+    
+    This allows dynamic provider configuration from the UI.
+    """
+    try:
+        # Check if provider already registered
+        existing = provider_registry.get(name)
+        if existing:
+            await existing.close()
+            provider_registry.unregister(name)
+        
+        # Create new provider based on name
+        if name == "ollama":
+            base_url = config.base_url or "http://localhost:11434"
+            adapter = OllamaAdapter(base_url=base_url)
+        elif name == "openai" and config.api_key:
+            adapter = OpenAIAdapter(api_key=config.api_key)
+        elif name == "anthropic" and config.api_key:
+            adapter = AnthropicAdapter(api_key=config.api_key)
+        elif name == "groq" and config.api_key:
+            adapter = GroqAdapter(api_key=config.api_key)
+        else:
+            return {"success": False, "error": f"Unknown provider or missing API key: {name}"}
+        
+        # Register the new provider
+        provider_registry.register(adapter)
+        
+        # Test the connection
+        health = await adapter.health_check()
+        
+        return {
+            "success": health.status.value == "HEALTHY",
+            "provider": name,
+            "status": health.status.value,
+            "error": health.error,
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 
 # =============================================================================

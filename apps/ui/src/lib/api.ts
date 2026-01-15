@@ -149,6 +149,15 @@ export const api = {
   getProviderModels: (name: string) =>
     fetchJson<{ provider: string; models: string[] }>(`${API_BASE}/providers/${name}/models`),
 
+  configureProvider: (name: string, config: { api_key?: string; base_url?: string }) =>
+    fetchJson<{ success: boolean; provider: string; status: string; error?: string }>(
+      `${API_BASE}/providers/${name}/configure`,
+      {
+        method: 'POST',
+        body: JSON.stringify(config),
+      }
+    ),
+
   // Receipts (v1 API)
   getReceipts: (params?: { limit?: number; offset?: number; status?: string }) => {
     const searchParams = new URLSearchParams()
