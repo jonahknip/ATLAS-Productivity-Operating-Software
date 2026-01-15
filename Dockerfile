@@ -9,7 +9,7 @@ WORKDIR /ui
 # Copy UI package files
 COPY apps/ui/package.json ./
 
-# Install dependencies (use npm install if no lock file)
+# Install dependencies
 RUN npm install
 
 # Copy UI source
@@ -17,9 +17,6 @@ COPY apps/ui/ ./
 
 # Build the UI (outputs to dist/)
 RUN npm run build
-
-# Debug: List built files
-RUN ls -la dist/ && ls -la dist/assets/ || true
 
 
 # Stage 2: Build and run the API
@@ -33,23 +30,15 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy API pyproject.toml
+# Copy API source code first
+COPY apps/api/src/atlas ./src/atlas
 COPY apps/api/pyproject.toml ./
 
-# Create src directory structure
-RUN mkdir -p src/atlas
-
-# Copy API source code
-COPY apps/api/src/atlas ./src/atlas
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -e ".[postgres]"
+# Install Python dependencies (non-editable for production)
+RUN pip install --no-cache-dir ".[postgres]"
 
 # Copy built UI from previous stage
 COPY --from=ui-builder /ui/dist ./static
-
-# Debug: Verify static files were copied
-RUN ls -la static/ && ls -la static/assets/ || echo "No assets dir"
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
