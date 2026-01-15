@@ -6,14 +6,15 @@ The executor is responsible for:
 2. Routing to the appropriate model
 3. Normalizing and validating output
 4. Managing fallbacks
-5. ALWAYS producing a receipt (success or failure)
+5. Executing skills and tools
+6. ALWAYS producing a receipt (success or failure)
 
 This is the core of the reliability engine.
 """
 
 import time
 from datetime import datetime
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from atlas.config import get_settings
 from atlas.core.fallback import FallbackManager
@@ -33,6 +34,10 @@ from atlas.core.normalizer import JSONNormalizer
 from atlas.core.validator import Validator
 from atlas.providers import ProviderRegistry
 from atlas.providers.base import CompletionRequest, ProviderError
+
+if TYPE_CHECKING:
+    from atlas.skills.registry import SkillRegistry
+    from atlas.tools.registry import ToolRegistry
 
 
 class Executor:
@@ -61,12 +66,16 @@ Respond ONLY with valid JSON (no markdown, no explanation):
         self,
         provider_registry: ProviderRegistry,
         fallback_manager: FallbackManager | None = None,
+        skill_registry: "SkillRegistry | None" = None,
+        tool_registry: "ToolRegistry | None" = None,
     ):
         self.providers = provider_registry
         self.fallback = fallback_manager or FallbackManager()
         self.normalizer = JSONNormalizer()
         self.validator = Validator()
         self.settings = get_settings()
+        self.skills = skill_registry
+        self.tools = tool_registry
 
     async def execute(
         self,
@@ -104,10 +113,33 @@ Respond ONLY with valid JSON (no markdown, no explanation):
             if intent:
                 receipt.intent_final = intent
                 
-                # Determine status based on what we achieved
-                # For now, successful classification = SUCCESS
-                # (Future: will depend on tool execution)
-                receipt.status = ReceiptStatus.SUCCESS
+                # Step 2: Execute skill if available
+                if self.skills and self.tools:
+                    skill_result = await self._execute_skill(intent, receipt)
+                    
+                    if skill_result:
+                        # Copy results from skill execution to receipt
+                        receipt.tool_calls.extend(skill_result.tool_calls)
+                        receipt.changes.extend(skill_result.changes)
+                        receipt.undo.extend(skill_result.undo_steps)
+                        receipt.warnings.extend(skill_result.warnings)
+                        
+                        if skill_result.errors:
+                            receipt.errors.extend(skill_result.errors)
+                        
+                        # Set status based on skill success
+                        if skill_result.success:
+                            receipt.status = ReceiptStatus.SUCCESS
+                        else:
+                            receipt.status = ReceiptStatus.PARTIAL if receipt.tool_calls else ReceiptStatus.FAILED
+                    else:
+                        # No skill found for this intent
+                        receipt.status = ReceiptStatus.SUCCESS
+                        receipt.warnings.append(f"No skill registered for intent: {intent.type.value}")
+                else:
+                    # No skill/tool registries - just classification
+                    receipt.status = ReceiptStatus.SUCCESS
+                    receipt.warnings.append("Skill execution not available")
             else:
                 # Classification failed after all retries
                 receipt.status = ReceiptStatus.FAILED
@@ -353,3 +385,41 @@ Please respond with ONLY a valid JSON object, no markdown formatting, no explana
 Example: {"type": "CAPTURE_TASKS", "confidence": 0.9, "parameters": {}, "raw_entities": ["task1"]}"""
         
         return base_prompt
+
+    async def _execute_skill(
+        self,
+        intent: Intent,
+        receipt: Receipt,
+    ):
+        """
+        Execute the appropriate skill for the given intent.
+        
+        Args:
+            intent: The classified intent
+            receipt: The receipt to update
+            
+        Returns:
+            SkillResult or None if no skill found
+        """
+        if not self.skills or not self.tools:
+            return None
+        
+        # Check if we have a skill for this intent
+        skill = self.skills.get_for_intent(intent)
+        if not skill:
+            return None
+        
+        # Import here to avoid circular dependency
+        from atlas.skills.base import SkillContext
+        
+        # Build skill context
+        context = SkillContext(
+            intent=intent,
+            receipt=receipt,
+            providers=self.providers,
+            user_id=receipt.profile_id,
+            tools=self.tools,
+        )
+        
+        # Execute the skill
+        return await skill.execute(context)

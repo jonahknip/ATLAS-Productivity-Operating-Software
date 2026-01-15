@@ -4,6 +4,7 @@ ATLAS API - Main FastAPI application.
 Entry point for the ATLAS backend server.
 """
 
+import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -16,15 +17,60 @@ from atlas.config import get_settings
 from atlas.core.fallback import FallbackManager
 from atlas.core.models import Receipt, ReceiptStatus, RoutingProfile
 from atlas.engine import Executor
+from atlas.middleware import APITokenMiddleware
 from atlas.providers import ProviderRegistry
 from atlas.providers.ollama import OllamaAdapter
 from atlas.providers.openai import OpenAIAdapter
 from atlas.storage import ReceiptsStore, get_database, close_database
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+
+# Skills & Tools
+from atlas.skills.registry import SkillRegistry
+from atlas.skills.capture_tasks import CaptureTasksSkill
+from atlas.skills.search_summarize import SearchSummarizeSkill
+from atlas.skills.plan_day import PlanDaySkill
+from atlas.skills.meeting_notes import ProcessMeetingNotesSkill
+from atlas.skills.build_workflow import BuildWorkflowSkill
+
+from atlas.tools.registry import ToolRegistry
+from atlas.tools.tasks import (
+    TaskCreateTool,
+    TaskListTool,
+    TaskGetTool,
+    TaskUpdateTool,
+    TaskDeleteTool,
+)
+from atlas.tools.notes import (
+    NoteCreateTool,
+    NoteSearchTool,
+    NoteGetTool,
+    NoteUpdateTool,
+    NoteDeleteTool,
+)
+from atlas.tools.calendar import (
+    CalendarGetDayTool,
+    CalendarCreateBlocksTool,
+    CalendarDeleteBlocksTool,
+    CalendarUpdateBlockTool,
+)
+from atlas.skills.build_workflow import (
+    WorkflowSaveTool,
+    WorkflowEnableTool,
+    WorkflowListTool,
+    WorkflowDeleteTool,
+)
+
 
 # Global instances
 provider_registry = ProviderRegistry()
 fallback_manager = FallbackManager()
+skill_registry = SkillRegistry()
+tool_registry = ToolRegistry()
 receipts_store: ReceiptsStore | None = None
 executor: Executor | None = None
 
@@ -46,8 +92,40 @@ async def lifespan(app: FastAPI):
     if settings.openai_api_key:
         provider_registry.register(OpenAIAdapter(api_key=settings.openai_api_key))
 
-    # Create executor
-    executor = Executor(provider_registry, fallback_manager)
+    # Register tools
+    tool_registry.register(TaskCreateTool())
+    tool_registry.register(TaskListTool())
+    tool_registry.register(TaskGetTool())
+    tool_registry.register(TaskUpdateTool())
+    tool_registry.register(TaskDeleteTool())
+    tool_registry.register(NoteCreateTool())
+    tool_registry.register(NoteSearchTool())
+    tool_registry.register(NoteGetTool())
+    tool_registry.register(NoteUpdateTool())
+    tool_registry.register(NoteDeleteTool())
+    tool_registry.register(CalendarGetDayTool())
+    tool_registry.register(CalendarCreateBlocksTool())
+    tool_registry.register(CalendarDeleteBlocksTool())
+    tool_registry.register(CalendarUpdateBlockTool())
+    tool_registry.register(WorkflowSaveTool())
+    tool_registry.register(WorkflowEnableTool())
+    tool_registry.register(WorkflowListTool())
+    tool_registry.register(WorkflowDeleteTool())
+
+    # Register skills
+    skill_registry.register(CaptureTasksSkill())
+    skill_registry.register(SearchSummarizeSkill())
+    skill_registry.register(PlanDaySkill())
+    skill_registry.register(ProcessMeetingNotesSkill())
+    skill_registry.register(BuildWorkflowSkill())
+
+    # Create executor with skills and tools
+    executor = Executor(
+        provider_registry,
+        fallback_manager,
+        skill_registry,
+        tool_registry,
+    )
 
     # Initial health check
     await provider_registry.check_all_health()
@@ -66,14 +144,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS for local development
+# Get settings for middleware configuration
+_settings = get_settings()
+
+# CORS middleware - configured from environment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=_settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# API Token authentication middleware for /v1/* routes
+app.add_middleware(APITokenMiddleware)
 
 
 # =============================================================================
@@ -195,6 +279,17 @@ async def health() -> dict[str, str]:
     return {"status": "healthy", "version": __version__}
 
 
+@app.get("/version")
+async def version() -> dict[str, Any]:
+    """Version and build information."""
+    settings = get_settings()
+    return {
+        "version": __version__,
+        "app_name": settings.app_name,
+        "database": "postgres" if settings.is_postgres else "sqlite",
+    }
+
+
 @app.get("/api/status")
 async def status() -> dict[str, Any]:
     """Detailed system status including providers."""
@@ -251,6 +346,29 @@ async def list_provider_models(name: str) -> dict[str, Any]:
     return {
         "provider": name,
         "models": models,
+    }
+
+
+# =============================================================================
+# Skills & Tools Endpoints
+# =============================================================================
+
+
+@app.get("/api/skills")
+async def list_skills() -> dict[str, Any]:
+    """List all registered skills and their capabilities."""
+    return {
+        "skills": skill_registry.get_skill_info(),
+        "total": len(skill_registry.list_skills()),
+    }
+
+
+@app.get("/api/tools")
+async def list_tools() -> dict[str, Any]:
+    """List all registered tools and their capabilities."""
+    return {
+        "tools": tool_registry.get_tool_info(),
+        "total": len(tool_registry.list_tools()),
     }
 
 

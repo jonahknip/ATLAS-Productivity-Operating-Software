@@ -2,10 +2,16 @@
  * ATLAS API client
  * 
  * Uses v1 API endpoints for all operations.
+ * Supports authentication via VITE_ATLAS_API_TOKEN env var.
  */
 
-const API_BASE = '/api'
-const V1_BASE = '/v1'
+// API base URL - use env var in production, proxy in dev
+const API_URL = import.meta.env.VITE_ATLAS_API_URL || ''
+const API_BASE = `${API_URL}/api`
+const V1_BASE = `${API_URL}/v1`
+
+// API token for authentication (optional in dev, required in prod)
+const API_TOKEN = import.meta.env.VITE_ATLAS_API_TOKEN || ''
 
 export interface StatusResponse {
   version: string
@@ -105,12 +111,19 @@ export interface UndoResponse {
 }
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(options?.headers as Record<string, string> || {}),
+  }
+  
+  // Add Authorization header if API token is configured and this is a v1 endpoint
+  if (API_TOKEN && url.includes('/v1')) {
+    headers['Authorization'] = `Bearer ${API_TOKEN}`
+  }
+  
   const response = await fetch(url, {
     ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
+    headers,
   })
 
   if (!response.ok) {
