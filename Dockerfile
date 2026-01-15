@@ -7,16 +7,19 @@ FROM node:20-slim AS ui-builder
 WORKDIR /ui
 
 # Copy UI package files
-COPY apps/ui/package*.json ./
+COPY apps/ui/package.json ./
 
-# Install dependencies
-RUN npm ci
+# Install dependencies (use npm install if no lock file)
+RUN npm install
 
 # Copy UI source
 COPY apps/ui/ ./
 
 # Build the UI (outputs to dist/)
 RUN npm run build
+
+# Debug: List built files
+RUN ls -la dist/ && ls -la dist/assets/ || true
 
 
 # Stage 2: Build and run the API
@@ -45,6 +48,9 @@ RUN pip install --no-cache-dir -e ".[postgres]"
 # Copy built UI from previous stage
 COPY --from=ui-builder /ui/dist ./static
 
+# Debug: Verify static files were copied
+RUN ls -la static/ && ls -la static/assets/ || echo "No assets dir"
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -54,4 +60,4 @@ ENV PORT=8000
 EXPOSE 8000
 
 # Run the application
-CMD uvicorn atlas.main:app --host 0.0.0.0 --port $PORT
+CMD ["uvicorn", "atlas.main:app", "--host", "0.0.0.0", "--port", "8000"]

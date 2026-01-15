@@ -724,12 +724,20 @@ async def undo_receipt_legacy(receipt_id: str) -> UndoResponse:
 # =============================================================================
 
 # Path to static UI files (built UI copied during Docker build)
-STATIC_DIR = Path(__file__).parent.parent.parent.parent / "static"
+# In Docker: /app/static, in dev: might not exist
+STATIC_DIR = Path("/app/static")
+if not STATIC_DIR.exists():
+    # Fallback for local development
+    STATIC_DIR = Path(__file__).parent.parent.parent.parent / "static"
 
 # Check if static directory exists (production build)
-if STATIC_DIR.exists():
+if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
+    logging.info(f"Serving static UI from {STATIC_DIR}")
+    
     # Serve static assets (JS, CSS, images)
-    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
+    assets_dir = STATIC_DIR / "assets"
+    if assets_dir.exists():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
     
     @app.get("/{full_path:path}")
     async def serve_ui(request: Request, full_path: str):
@@ -749,3 +757,5 @@ if STATIC_DIR.exists():
             return FileResponse(index_path)
         
         raise HTTPException(status_code=404, detail="UI not found")
+else:
+    logging.info(f"Static UI not found at {STATIC_DIR}, API-only mode")
