@@ -2,6 +2,7 @@
 Note Tools - CRUD operations for notes.
 
 All note tools are LOW risk and support search.
+Uses MCP Dashboard server when available, falls back to in-memory storage.
 """
 
 from datetime import datetime
@@ -10,9 +11,10 @@ from uuid import uuid4
 
 from atlas.core.models import Change, RiskLevel, UndoStep
 from atlas.tools.base import Tool, ToolResult
+from atlas.mcp import get_mcp_client
 
 
-# In-memory note storage
+# In-memory note storage (fallback when MCP not available)
 _notes: dict[str, dict[str, Any]] = {}
 
 
@@ -31,13 +33,40 @@ class NoteCreateTool(Tool):
     def description(self) -> str:
         return "Create a new note with title, content, and tags"
 
-    async def execute(
-        self,
-        title: str,
-        content: str = "",
-        tags: list[str] | None = None,
-        **kwargs: Any,
-    ) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        title = kwargs.get("title", "Untitled Note")
+        content = kwargs.get("content", "")
+        tags = kwargs.get("tags", [])
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        response = await mcp.call_dashboard("note.create", {
+            "title": title,
+            "content": content,
+            "tags": tags,
+        })
+        
+        if response.success and response.data:
+            note_id = str(response.data.get("note_id") or response.data.get("id") or "unknown")
+            return ToolResult(
+                success=True,
+                data={"note_id": note_id, "source": "mcp"},
+                changes=[
+                    Change(
+                        entity_type="note",
+                        entity_id=note_id,
+                        action="created",
+                        after=response.data,
+                    )
+                ],
+                undo_step=UndoStep(
+                    tool_name="NOTE_DELETE",
+                    args={"note_id": note_id},
+                    description=f"Delete note: {title}",
+                ),
+            )
+        
+        # Fallback to in-memory storage
         note_id = f"note_{uuid4().hex[:12]}"
         now = datetime.utcnow().isoformat()
         
@@ -54,7 +83,7 @@ class NoteCreateTool(Tool):
         
         return ToolResult(
             success=True,
-            data={"note_id": note_id, "created_at": now},
+            data={"note_id": note_id, "created_at": now, "source": "local"},
             changes=[
                 Change(
                     entity_type="note",
@@ -86,13 +115,26 @@ class NoteSearchTool(Tool):
     def description(self) -> str:
         return "Search notes by query string or tags"
 
-    async def execute(
-        self,
-        query: str = "",
-        tags: list[str] | None = None,
-        limit: int = 20,
-        **kwargs: Any,
-    ) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        query = kwargs.get("query", "")
+        tags = kwargs.get("tags")
+        limit = kwargs.get("limit", 20)
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        response = await mcp.call_dashboard("note.search", {
+            "query": query,
+            "tags": tags,
+            "limit": limit,
+        })
+        
+        if response.success and response.data:
+            return ToolResult(
+                success=True,
+                data={"notes": response.data.get("notes", []), "source": "mcp"},
+            )
+        
+        # Fallback to in-memory storage
         results = []
         query_lower = query.lower()
         
@@ -138,7 +180,7 @@ class NoteSearchTool(Tool):
         
         return ToolResult(
             success=True,
-            data={"notes": results, "total": len(results)},
+            data={"notes": results, "total": len(results), "source": "local"},
         )
 
 
@@ -157,7 +199,23 @@ class NoteGetTool(Tool):
     def description(self) -> str:
         return "Get the full content of a note by its ID"
 
-    async def execute(self, note_id: str, **kwargs: Any) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        note_id = kwargs.get("note_id")
+        
+        if not note_id:
+            return ToolResult(success=False, error="note_id is required")
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        response = await mcp.call_dashboard("note.get", {"note_id": note_id})
+        
+        if response.success and response.data:
+            return ToolResult(
+                success=True,
+                data={"note": response.data, "source": "mcp"},
+            )
+        
+        # Fallback to in-memory storage
         note = _notes.get(note_id)
         
         if not note:
@@ -168,7 +226,7 @@ class NoteGetTool(Tool):
         
         return ToolResult(
             success=True,
-            data={"note": note},
+            data={"note": note, "source": "local"},
         )
 
 
@@ -187,12 +245,35 @@ class NoteUpdateTool(Tool):
     def description(self) -> str:
         return "Update a note's title, content, or tags"
 
-    async def execute(
-        self,
-        note_id: str,
-        updates: dict[str, Any],
-        **kwargs: Any,
-    ) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        note_id = kwargs.get("note_id")
+        updates = kwargs.get("updates", {})
+        
+        if not note_id:
+            return ToolResult(success=False, error="note_id is required")
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        response = await mcp.call_dashboard("note.update", {
+            "note_id": note_id,
+            "updates": updates,
+        })
+        
+        if response.success and response.data:
+            return ToolResult(
+                success=True,
+                data={"note_id": note_id, "updated": True, "source": "mcp"},
+                changes=[
+                    Change(
+                        entity_type="note",
+                        entity_id=note_id,
+                        action="updated",
+                        after=response.data,
+                    )
+                ],
+            )
+        
+        # Fallback to in-memory storage
         note = _notes.get(note_id)
         
         if not note:
@@ -216,6 +297,7 @@ class NoteUpdateTool(Tool):
                 "note_id": note_id,
                 "before": {k: before.get(k) for k in updates.keys()},
                 "after": {k: note.get(k) for k in updates.keys()},
+                "source": "local",
             },
             changes=[
                 Change(
@@ -252,7 +334,49 @@ class NoteDeleteTool(Tool):
     def description(self) -> str:
         return "Delete a note by its ID"
 
-    async def execute(self, note_id: str, **kwargs: Any) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        note_id = kwargs.get("note_id")
+        
+        if not note_id:
+            return ToolResult(success=False, error="note_id is required")
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        
+        # Get note first for undo info
+        get_response = await mcp.call_dashboard("note.get", {"note_id": note_id})
+        note_data = get_response.data if get_response.success else None
+        
+        response = await mcp.call_dashboard("note.delete", {"note_id": note_id})
+        
+        if response.success:
+            undo_step = None
+            if note_data:
+                undo_step = UndoStep(
+                    tool_name="NOTE_CREATE",
+                    args={
+                        "title": note_data.get("title", ""),
+                        "content": note_data.get("content", ""),
+                        "tags": note_data.get("tags", []),
+                    },
+                    description=f"Restore deleted note",
+                )
+            
+            return ToolResult(
+                success=True,
+                data={"note_id": note_id, "deleted": True, "source": "mcp"},
+                changes=[
+                    Change(
+                        entity_type="note",
+                        entity_id=note_id,
+                        action="deleted",
+                        before=note_data,
+                    )
+                ],
+                undo_step=undo_step,
+            )
+        
+        # Fallback to in-memory storage
         note = _notes.pop(note_id, None)
         
         if not note:
@@ -263,7 +387,7 @@ class NoteDeleteTool(Tool):
         
         return ToolResult(
             success=True,
-            data={"note_id": note_id, "deleted": True},
+            data={"note_id": note_id, "deleted": True, "source": "local"},
             changes=[
                 Change(
                     entity_type="note",

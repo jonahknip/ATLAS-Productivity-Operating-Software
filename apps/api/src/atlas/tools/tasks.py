@@ -2,6 +2,7 @@
 Task Tools - CRUD operations for tasks.
 
 All task tools are LOW risk and provide undo capabilities.
+Uses MCP Dashboard server when available, falls back to in-memory storage.
 """
 
 from datetime import datetime
@@ -10,9 +11,10 @@ from uuid import uuid4
 
 from atlas.core.models import Change, RiskLevel, UndoStep
 from atlas.tools.base import Tool, ToolResult
+from atlas.mcp import get_mcp_client
 
 
-# In-memory task storage (will be replaced with SQLite later)
+# In-memory task storage (fallback when MCP not available)
 _tasks: dict[str, dict[str, Any]] = {}
 
 
@@ -31,15 +33,44 @@ class TaskCreateTool(Tool):
     def description(self) -> str:
         return "Create a new task with title, description, due date, and priority"
 
-    async def execute(
-        self,
-        title: str,
-        description: str = "",
-        due_date: str | None = None,
-        priority: str = "medium",
-        tags: list[str] | None = None,
-        **kwargs: Any,
-    ) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        title = kwargs.get("title", "Untitled Task")
+        description = kwargs.get("description", "")
+        due_date = kwargs.get("due_date")
+        priority = kwargs.get("priority", "medium")
+        tags = kwargs.get("tags", [])
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        response = await mcp.call_dashboard("task.create", {
+            "title": title,
+            "description": description,
+            "due_date": due_date,
+            "priority": priority,
+            "tags": tags,
+        })
+        
+        if response.success and response.data:
+            task_id = str(response.data.get("task_id") or response.data.get("id") or "unknown")
+            return ToolResult(
+                success=True,
+                data={"task_id": task_id, "source": "mcp"},
+                changes=[
+                    Change(
+                        entity_type="task",
+                        entity_id=task_id,
+                        action="created",
+                        after=response.data,
+                    )
+                ],
+                undo_step=UndoStep(
+                    tool_name="TASK_DELETE",
+                    args={"task_id": task_id},
+                    description=f"Delete task: {title}",
+                ),
+            )
+        
+        # Fallback to in-memory storage
         task_id = f"task_{uuid4().hex[:12]}"
         now = datetime.utcnow().isoformat()
         
@@ -59,7 +90,7 @@ class TaskCreateTool(Tool):
         
         return ToolResult(
             success=True,
-            data={"task_id": task_id, "created_at": now},
+            data={"task_id": task_id, "created_at": now, "source": "local"},
             changes=[
                 Change(
                     entity_type="task",
@@ -91,14 +122,28 @@ class TaskListTool(Tool):
     def description(self) -> str:
         return "List tasks with optional status, date, and tag filters"
 
-    async def execute(
-        self,
-        status: str | None = None,
-        due_before: str | None = None,
-        tags: list[str] | None = None,
-        limit: int = 50,
-        **kwargs: Any,
-    ) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        status = kwargs.get("status")
+        due_before = kwargs.get("due_before")
+        tags = kwargs.get("tags")
+        limit = kwargs.get("limit", 50)
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        response = await mcp.call_dashboard("task.list", {
+            "status": status,
+            "due_before": due_before,
+            "tags": tags,
+            "limit": limit,
+        })
+        
+        if response.success and response.data:
+            return ToolResult(
+                success=True,
+                data={"tasks": response.data.get("tasks", []), "source": "mcp"},
+            )
+        
+        # Fallback to in-memory storage
         tasks = list(_tasks.values())
         
         # Apply filters
@@ -119,7 +164,7 @@ class TaskListTool(Tool):
         
         return ToolResult(
             success=True,
-            data={"tasks": tasks, "total": len(tasks)},
+            data={"tasks": tasks, "total": len(tasks), "source": "local"},
         )
 
 
@@ -138,7 +183,23 @@ class TaskGetTool(Tool):
     def description(self) -> str:
         return "Get a specific task by its ID"
 
-    async def execute(self, task_id: str, **kwargs: Any) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        task_id = kwargs.get("task_id")
+        
+        if not task_id:
+            return ToolResult(success=False, error="task_id is required")
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        response = await mcp.call_dashboard("task.get", {"task_id": task_id})
+        
+        if response.success and response.data:
+            return ToolResult(
+                success=True,
+                data={"task": response.data, "source": "mcp"},
+            )
+        
+        # Fallback to in-memory storage
         task = _tasks.get(task_id)
         
         if not task:
@@ -149,7 +210,7 @@ class TaskGetTool(Tool):
         
         return ToolResult(
             success=True,
-            data={"task": task},
+            data={"task": task, "source": "local"},
         )
 
 
@@ -168,12 +229,35 @@ class TaskUpdateTool(Tool):
     def description(self) -> str:
         return "Update a task's properties (status, title, etc.)"
 
-    async def execute(
-        self,
-        task_id: str,
-        updates: dict[str, Any],
-        **kwargs: Any,
-    ) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        task_id = kwargs.get("task_id")
+        updates = kwargs.get("updates", {})
+        
+        if not task_id:
+            return ToolResult(success=False, error="task_id is required")
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        response = await mcp.call_dashboard("task.update", {
+            "task_id": task_id,
+            "updates": updates,
+        })
+        
+        if response.success and response.data:
+            return ToolResult(
+                success=True,
+                data={"task_id": task_id, "updated": True, "source": "mcp"},
+                changes=[
+                    Change(
+                        entity_type="task",
+                        entity_id=task_id,
+                        action="updated",
+                        after=response.data,
+                    )
+                ],
+            )
+        
+        # Fallback to in-memory storage
         task = _tasks.get(task_id)
         
         if not task:
@@ -199,6 +283,7 @@ class TaskUpdateTool(Tool):
                 "task_id": task_id,
                 "before": {k: before.get(k) for k in updates.keys()},
                 "after": {k: task.get(k) for k in updates.keys()},
+                "source": "local",
             },
             changes=[
                 Change(
@@ -235,7 +320,51 @@ class TaskDeleteTool(Tool):
     def description(self) -> str:
         return "Delete a task by its ID"
 
-    async def execute(self, task_id: str, **kwargs: Any) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        task_id = kwargs.get("task_id")
+        
+        if not task_id:
+            return ToolResult(success=False, error="task_id is required")
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        
+        # Get task first for undo info
+        get_response = await mcp.call_dashboard("task.get", {"task_id": task_id})
+        task_data = get_response.data if get_response.success else None
+        
+        response = await mcp.call_dashboard("task.delete", {"task_id": task_id})
+        
+        if response.success:
+            undo_step = None
+            if task_data:
+                undo_step = UndoStep(
+                    tool_name="TASK_CREATE",
+                    args={
+                        "title": task_data.get("title", ""),
+                        "description": task_data.get("description", ""),
+                        "due_date": task_data.get("due_date"),
+                        "priority": task_data.get("priority", "medium"),
+                        "tags": task_data.get("tags", []),
+                    },
+                    description=f"Restore deleted task",
+                )
+            
+            return ToolResult(
+                success=True,
+                data={"task_id": task_id, "deleted": True, "source": "mcp"},
+                changes=[
+                    Change(
+                        entity_type="task",
+                        entity_id=task_id,
+                        action="deleted",
+                        before=task_data,
+                    )
+                ],
+                undo_step=undo_step,
+            )
+        
+        # Fallback to in-memory storage
         task = _tasks.pop(task_id, None)
         
         if not task:
@@ -246,7 +375,7 @@ class TaskDeleteTool(Tool):
         
         return ToolResult(
             success=True,
-            data={"task_id": task_id, "deleted": True},
+            data={"task_id": task_id, "deleted": True, "source": "local"},
             changes=[
                 Change(
                     entity_type="task",
@@ -255,7 +384,6 @@ class TaskDeleteTool(Tool):
                     before=task,
                 )
             ],
-            # Undo by recreating the task
             undo_step=UndoStep(
                 tool_name="TASK_CREATE",
                 args={

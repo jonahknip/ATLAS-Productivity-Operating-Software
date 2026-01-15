@@ -2,6 +2,7 @@
 Calendar Tools - Operations for calendar blocks.
 
 Calendar write operations are MEDIUM risk and require confirmation.
+Uses MCP Dashboard server when available, falls back to in-memory storage.
 """
 
 from datetime import datetime, timedelta
@@ -10,9 +11,10 @@ from uuid import uuid4
 
 from atlas.core.models import Change, RiskLevel, UndoStep
 from atlas.tools.base import Tool, ToolResult
+from atlas.mcp import get_mcp_client
 
 
-# In-memory calendar storage
+# In-memory calendar storage (fallback when MCP not available)
 _calendar_blocks: dict[str, dict[str, Any]] = {}
 
 
@@ -31,8 +33,25 @@ class CalendarGetDayTool(Tool):
     def description(self) -> str:
         return "Get all calendar blocks and free slots for a given date"
 
-    async def execute(self, date: str, **kwargs: Any) -> ToolResult:
-        # Get blocks for this date
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        date = kwargs.get("date", datetime.utcnow().strftime("%Y-%m-%d"))
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        response = await mcp.call_dashboard("calendar.get_day", {"date": date})
+        
+        if response.success and response.data:
+            return ToolResult(
+                success=True,
+                data={
+                    "date": date,
+                    "blocks": response.data.get("blocks", []),
+                    "free_slots": response.data.get("free_slots", []),
+                    "source": "mcp",
+                },
+            )
+        
+        # Fallback to in-memory storage
         blocks = [
             b for b in _calendar_blocks.values()
             if b["date"] == date
@@ -71,6 +90,7 @@ class CalendarGetDayTool(Tool):
                 "date": date,
                 "blocks": blocks,
                 "free_slots": free_slots,
+                "source": "local",
             },
         )
 
@@ -90,12 +110,52 @@ class CalendarCreateBlocksTool(Tool):
     def description(self) -> str:
         return "Create one or more calendar blocks for a given date"
 
-    async def execute(
-        self,
-        date: str,
-        blocks: list[dict[str, Any]],
-        **kwargs: Any,
-    ) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        date = kwargs.get("date", datetime.utcnow().strftime("%Y-%m-%d"))
+        blocks = kwargs.get("blocks", [])
+        
+        if not blocks:
+            return ToolResult(success=False, error="No blocks provided")
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        
+        # Convert blocks to MCP format
+        mcp_blocks = []
+        for block_data in blocks:
+            mcp_blocks.append({
+                "title": block_data.get("title", "Untitled"),
+                "start_time": f"{date}T{block_data.get('start', '09:00')}:00",
+                "end_time": f"{date}T{block_data.get('end', '10:00')}:00",
+                "block_type": block_data.get("type", "focus"),
+            })
+        
+        response = await mcp.call_dashboard("calendar.create_blocks", {"blocks": mcp_blocks})
+        
+        if response.success and response.data:
+            created = response.data.get("created", [])
+            block_ids = [b.get("block_id") or b.get("id") for b in created]
+            
+            return ToolResult(
+                success=True,
+                data={"created": created, "source": "mcp"},
+                changes=[
+                    Change(
+                        entity_type="calendar_block",
+                        entity_id=str(bid),
+                        action="created",
+                        after=block,
+                    )
+                    for bid, block in zip(block_ids, created)
+                ],
+                undo_step=UndoStep(
+                    tool_name="CALENDAR_DELETE_BLOCKS",
+                    args={"block_ids": [str(b) for b in block_ids if b]},
+                    description=f"Delete {len(block_ids)} calendar block(s)",
+                ),
+            )
+        
+        # Fallback to in-memory storage
         created_blocks = []
         block_ids = []
         
@@ -118,7 +178,7 @@ class CalendarCreateBlocksTool(Tool):
         
         return ToolResult(
             success=True,
-            data={"created": created_blocks},
+            data={"created": created_blocks, "source": "local"},
             changes=[
                 Change(
                     entity_type="calendar_block",
@@ -151,11 +211,31 @@ class CalendarDeleteBlocksTool(Tool):
     def description(self) -> str:
         return "Delete one or more calendar blocks by their IDs"
 
-    async def execute(
-        self,
-        block_ids: list[str],
-        **kwargs: Any,
-    ) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        block_ids = kwargs.get("block_ids", [])
+        
+        if not block_ids:
+            return ToolResult(success=False, error="No block_ids provided")
+        
+        # Try MCP server first
+        mcp = get_mcp_client()
+        response = await mcp.call_dashboard("calendar.delete_blocks", {"block_ids": block_ids})
+        
+        if response.success:
+            return ToolResult(
+                success=True,
+                data={"deleted": block_ids, "source": "mcp"},
+                changes=[
+                    Change(
+                        entity_type="calendar_block",
+                        entity_id=str(bid),
+                        action="deleted",
+                    )
+                    for bid in block_ids
+                ],
+            )
+        
+        # Fallback to in-memory storage
         deleted_blocks = []
         not_found = []
         
@@ -192,6 +272,7 @@ class CalendarDeleteBlocksTool(Tool):
                 "deleted": [b["block_id"] for b in deleted_blocks],
                 "deleted_data": deleted_blocks,
                 "not_found": not_found,
+                "source": "local",
             },
             changes=[
                 Change(
@@ -225,12 +306,14 @@ class CalendarUpdateBlockTool(Tool):
     def description(self) -> str:
         return "Update a calendar block's properties"
 
-    async def execute(
-        self,
-        block_id: str,
-        updates: dict[str, Any],
-        **kwargs: Any,
-    ) -> ToolResult:
+    async def execute(self, **kwargs: Any) -> ToolResult:
+        block_id = kwargs.get("block_id")
+        updates = kwargs.get("updates", {})
+        
+        if not block_id:
+            return ToolResult(success=False, error="block_id is required")
+        
+        # Fallback to in-memory storage (MCP doesn't have update endpoint)
         block = _calendar_blocks.get(block_id)
         
         if not block:
@@ -252,6 +335,7 @@ class CalendarUpdateBlockTool(Tool):
                 "block_id": block_id,
                 "before": {k: before.get(k) for k in updates.keys()},
                 "after": {k: block.get(k) for k in updates.keys()},
+                "source": "local",
             },
             changes=[
                 Change(

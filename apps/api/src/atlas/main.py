@@ -24,6 +24,7 @@ from atlas.providers.openai import OpenAIAdapter
 from atlas.providers.anthropic import AnthropicAdapter
 from atlas.providers.groq import GroqAdapter
 from atlas.storage import ReceiptsStore, get_database, close_database
+from atlas.mcp import close_mcp_client
 
 # Configure logging
 logging.basicConfig(
@@ -142,6 +143,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     await provider_registry.close_all()
+    await close_mcp_client()
     await close_database()
 
 
