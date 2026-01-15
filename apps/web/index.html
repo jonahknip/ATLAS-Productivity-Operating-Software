@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ATLAS - Productivity OS</title>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #12121a;
+      --surface-light: #1a1a24;
+      --border: #2a2a3a;
+      --text: #e4e4e7;
+      --text-muted: #71717a;
+      --primary: #6366f1;
+      --primary-hover: #818cf8;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --error: #ef4444;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2rem;
+    }
+    
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--primary), #8b5cf6);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 1.25rem;
+    }
+    
+    .logo h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+    }
+    
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--surface);
+      border-radius: 20px;
+      font-size: 0.875rem;
+    }
+    
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+    
+    .status-dot.error {
+      background: var(--error);
+    }
+    
+    .main-grid {
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      gap: 2rem;
+    }
+    
+    @media (max-width: 900px) {
+      .main-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+    }
+    
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    
+    .input-section {
+      margin-bottom: 2rem;
+    }
+    
+    .input-wrapper {
+      position: relative;
+    }
+    
+    #user-input {
+      width: 100%;
+      padding: 1rem 1.25rem;
+      padding-right: 100px;
+      background: var(--surface-light);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--text);
+      font-size: 1rem;
+      resize: none;
+      min-height: 100px;
+      font-family: inherit;
+    }
+    
+    #user-input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    
+    #user-input::placeholder {
+      color: var(--text-muted);
+    }
+    
+    .submit-btn {
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      padding: 0.625rem 1.25rem;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .submit-btn:hover {
+      background: var(--primary-hover);
+    }
+    
+    .submit-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .profile-selector {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .profile-btn {
+      padding: 0.5rem 1rem;
+      background: var(--surface-light);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .profile-btn:hover {
+      border-color: var(--primary);
+      color: var(--text);
+    }
+    
+    .profile-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: white;
+    }
+    
+    .receipt-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    
+    .receipt-item {
+      padding: 1rem;
+      background: var(--surface-light);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .receipt-item:hover {
+      background: var(--border);
+    }
+    
+    .receipt-item.selected {
+      border-left: 3px solid var(--primary);
+    }
+    
+    .receipt-status {
+      display: inline-block;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+    
+    .receipt-status.SUCCESS {
+      background: rgba(34, 197, 94, 0.2);
+      color: var(--success);
+    }
+    
+    .receipt-status.FAILED {
+      background: rgba(239, 68, 68, 0.2);
+      color: var(--error);
+    }
+    
+    .receipt-status.PARTIAL {
+      background: rgba(245, 158, 11, 0.2);
+      color: var(--warning);
+    }
+    
+    .receipt-input {
+      font-size: 0.875rem;
+      color: var(--text);
+      margin-bottom: 0.25rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .receipt-time {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+    
+    .detail-section {
+      margin-top: 1rem;
+    }
+    
+    .detail-section h4 {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+    
+    .detail-content {
+      background: var(--surface-light);
+      padding: 1rem;
+      border-radius: 8px;
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 0.8rem;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+    
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      color: var(--text-muted);
+    }
+    
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 0.75rem;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .config-section {
+      margin-bottom: 1.5rem;
+    }
+    
+    .config-input {
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--surface-light);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.875rem;
+      font-family: 'Monaco', 'Menlo', monospace;
+    }
+    
+    .config-input:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    
+    label {
+      display: block;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      margin-bottom: 0.5rem;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 3rem;
+      color: var(--text-muted);
+    }
+    
+    .tool-calls {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    
+    .tool-call {
+      padding: 0.75rem;
+      background: var(--bg);
+      border-radius: 6px;
+      font-size: 0.8rem;
+    }
+    
+    .tool-name {
+      color: var(--primary);
+      font-weight: 500;
+    }
+    
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    .stat-card {
+      background: var(--surface-light);
+      padding: 1rem;
+      border-radius: 8px;
+      text-align: center;
+    }
+    
+    .stat-value {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--primary);
+    }
+    
+    .stat-label {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 0.25rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-icon">A</div>
+        <h1>ATLAS</h1>
+      </div>
+      <div class="status-badge">
+        <div class="status-dot" id="status-dot"></div>
+        <span id="status-text">Connecting...</span>
+      </div>
+    </header>
+    
+    <div class="config-section">
+      <label for="api-url">API URL</label>
+      <input type="text" id="api-url" class="config-input" placeholder="http://localhost:8000" value="http://localhost:8000">
+      <label for="api-token" style="margin-top: 0.75rem;">API Token (optional for local)</label>
+      <input type="password" id="api-token" class="config-input" placeholder="Bearer token for authentication">
+    </div>
+    
+    <div class="stats-grid" id="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-receipts">-</div>
+        <div class="stat-label">Receipts</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-skills">-</div>
+        <div class="stat-label">Skills</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-tools">-</div>
+        <div class="stat-label">Tools</div>
+      </div>
+    </div>
+    
+    <div class="main-grid">
+      <div class="left-column">
+        <div class="card input-section">
+          <div class="card-header">
+            <span class="card-title">Execute Command</span>
+          </div>
+          <div class="profile-selector">
+            <button class="profile-btn active" data-profile="OFFLINE">Offline</button>
+            <button class="profile-btn" data-profile="BALANCED">Balanced</button>
+            <button class="profile-btn" data-profile="ACCURACY">Accuracy</button>
+          </div>
+          <div class="input-wrapper">
+            <textarea id="user-input" placeholder="What would you like to do? Try:&#10;- Create a task to review the deployment&#10;- Plan my day tomorrow&#10;- Search my notes for project ideas"></textarea>
+            <button class="submit-btn" id="submit-btn" onclick="executeCommand()">Execute</button>
+          </div>
+        </div>
+        
+        <div class="card" id="result-card" style="display: none;">
+          <div class="card-header">
+            <span class="card-title">Result</span>
+            <span class="receipt-status" id="result-status"></span>
+          </div>
+          <div id="result-content"></div>
+        </div>
+      </div>
+      
+      <div class="right-column">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Recent Receipts</span>
+            <button class="profile-btn" onclick="loadReceipts()">Refresh</button>
+          </div>
+          <div class="receipt-list" id="receipt-list">
+            <div class="loading">
+              <div class="spinner"></div>
+              Loading receipts...
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    let selectedProfile = 'OFFLINE';
+    let selectedReceipt = null;
+    
+    // Profile selector
+    document.querySelectorAll('.profile-btn[data-profile]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.profile-btn[data-profile]').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedProfile = btn.dataset.profile;
+      });
+    });
+    
+    // API helpers
+    function getApiUrl() {
+      return document.getElementById('api-url').value.replace(/\/$/, '');
+    }
+    
+    function getHeaders() {
+      const token = document.getElementById('api-token').value;
+      const headers = { 'Content-Type': 'application/json' };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+      return headers;
+    }
+    
+    async function apiCall(endpoint, options = {}) {
+      const url = getApiUrl() + endpoint;
+      const response = await fetch(url, {
+        ...options,
+        headers: { ...getHeaders(), ...options.headers }
+      });
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+      return response.json();
+    }
+    
+    // Check API status
+    async function checkStatus() {
+      const dot = document.getElementById('status-dot');
+      const text = document.getElementById('status-text');
+      
+      try {
+        const health = await apiCall('/health');
+        dot.classList.remove('error');
+        text.textContent = `v${health.version} - Healthy`;
+        
+        // Load stats
+        const status = await apiCall('/api/status');
+        document.getElementById('stat-receipts').textContent = status.receipts_count;
+        
+        const skills = await apiCall('/api/skills');
+        document.getElementById('stat-skills').textContent = skills.total;
+        
+        const tools = await apiCall('/api/tools');
+        document.getElementById('stat-tools').textContent = tools.total;
+        
+        loadReceipts();
+      } catch (e) {
+        dot.classList.add('error');
+        text.textContent = 'Disconnected';
+        console.error('Status check failed:', e);
+      }
+    }
+    
+    // Load receipts
+    async function loadReceipts() {
+      const list = document.getElementById('receipt-list');
+      
+      try {
+        const data = await apiCall('/v1/receipts?limit=20');
+        
+        if (data.receipts.length === 0) {
+          list.innerHTML = '<div class="empty-state">No receipts yet. Execute a command to get started!</div>';
+          return;
+        }
+        
+        list.innerHTML = data.receipts.map(r => `
+          <div class="receipt-item ${selectedReceipt === r.receipt_id ? 'selected' : ''}" onclick="showReceipt('${r.receipt_id}')">
+            <span class="receipt-status ${r.status}">${r.status}</span>
+            <div class="receipt-input">${escapeHtml(r.user_input)}</div>
+            <div class="receipt-time">${new Date(r.timestamp_utc).toLocaleString()}</div>
+          </div>
+        `).join('');
+      } catch (e) {
+        list.innerHTML = '<div class="empty-state">Failed to load receipts</div>';
+        console.error('Failed to load receipts:', e);
+      }
+    }
+    
+    // Show receipt detail
+    async function showReceipt(id) {
+      selectedReceipt = id;
+      loadReceipts(); // Refresh to show selection
+      
+      try {
+        const receipt = await apiCall(`/v1/receipts/${id}`);
+        showResult(receipt);
+      } catch (e) {
+        console.error('Failed to load receipt:', e);
+      }
+    }
+    
+    // Execute command
+    async function executeCommand() {
+      const input = document.getElementById('user-input').value.trim();
+      if (!input) return;
+      
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = 'Executing...';
+      
+      try {
+        const receipt = await apiCall('/v1/execute', {
+          method: 'POST',
+          body: JSON.stringify({
+            text: input,
+            routing_profile: selectedProfile
+          })
+        });
+        
+        showResult(receipt);
+        loadReceipts();
+        document.getElementById('user-input').value = '';
+      } catch (e) {
+        alert('Execution failed: ' + e.message);
+        console.error('Execution failed:', e);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Execute';
+      }
+    }
+    
+    // Show result
+    function showResult(receipt) {
+      const card = document.getElementById('result-card');
+      const status = document.getElementById('result-status');
+      const content = document.getElementById('result-content');
+      
+      card.style.display = 'block';
+      status.className = `receipt-status ${receipt.status}`;
+      status.textContent = receipt.status;
+      
+      let html = `
+        <div class="detail-section">
+          <h4>Input</h4>
+          <div class="detail-content">${escapeHtml(receipt.user_input)}</div>
+        </div>
+      `;
+      
+      if (receipt.intent_final) {
+        html += `
+          <div class="detail-section">
+            <h4>Intent</h4>
+            <div class="detail-content">${receipt.intent_final.type} (${(receipt.intent_final.confidence * 100).toFixed(0)}% confidence)</div>
+          </div>
+        `;
+      }
+      
+      if (receipt.models_attempted.length > 0) {
+        html += `
+          <div class="detail-section">
+            <h4>Models Used</h4>
+            <div class="detail-content">${receipt.models_attempted.map(m => 
+              `${m.provider}/${m.model} - ${m.success ? 'Success' : 'Failed'}${m.latency_ms ? ` (${m.latency_ms}ms)` : ''}`
+            ).join('\n')}</div>
+          </div>
+        `;
+      }
+      
+      if (receipt.tool_calls.length > 0) {
+        html += `
+          <div class="detail-section">
+            <h4>Tool Calls</h4>
+            <div class="tool-calls">
+              ${receipt.tool_calls.map(tc => `
+                <div class="tool-call">
+                  <span class="tool-name">${tc.tool_name}</span> - ${tc.status}
+                  ${tc.error ? `<br><span style="color: var(--error);">${tc.error}</span>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+      
+      if (receipt.changes.length > 0) {
+        html += `
+          <div class="detail-section">
+            <h4>Changes (${receipt.changes.length})</h4>
+            <div class="detail-content">${JSON.stringify(receipt.changes, null, 2)}</div>
+          </div>
+        `;
+      }
+      
+      if (receipt.warnings.length > 0) {
+        html += `
+          <div class="detail-section">
+            <h4>Warnings</h4>
+            <div class="detail-content" style="color: var(--warning);">${receipt.warnings.join('\n')}</div>
+          </div>
+        `;
+      }
+      
+      if (receipt.errors.length > 0) {
+        html += `
+          <div class="detail-section">
+            <h4>Errors</h4>
+            <div class="detail-content" style="color: var(--error);">${receipt.errors.join('\n')}</div>
+          </div>
+        `;
+      }
+      
+      content.innerHTML = html;
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    // Enter key to submit
+    document.getElementById('user-input').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+        executeCommand();
+      }
+    });
+    
+    // API URL change handler
+    document.getElementById('api-url').addEventListener('change', checkStatus);
+    document.getElementById('api-token').addEventListener('change', checkStatus);
+    
+    // Initial load
+    checkStatus();
+  </script>
+</body>
+</html>
